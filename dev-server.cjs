@@ -1,0 +1,119 @@
+const fs = require('fs');
+const express = require('express');
+const kuromoji = require('kuromoji');
+const path = require('path');
+
+// Load .env
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, 'utf8').split('\n').forEach((line) => {
+    const [key, ...val] = line.split('=');
+    if (key && val.length) process.env[key.trim()] = val.join('=').trim();
+  });
+}
+
+const app = express();
+app.use(express.json());
+
+let tokenizer = null;
+
+kuromoji.builder({
+  dicPath: path.join(__dirname, 'node_modules', 'kuromoji', 'dict'),
+}).build((err, t) => {
+  if (err) {
+    console.error('Failed to build tokenizer:', err);
+    process.exit(1);
+  }
+  tokenizer = t;
+  console.log('Tokenizer ready');
+});
+
+function isKanji(ch) {
+  const code = ch.charCodeAt(0);
+  return (code >= 0x4E00 && code <= 0x9FFF) ||
+         (code >= 0x3400 && code <= 0x4DBF) ||
+         (code >= 0xF900 && code <= 0xFAFF);
+}
+
+function hasKanji(str) {
+  return [...str].some(isKanji);
+}
+
+function katakanaToHiragana(str) {
+  if (!str) return '';
+  return str.replace(/[\u30A1-\u30F6]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x60)
+  );
+}
+
+app.post('/api/tokenize', (req, res) => {
+  if (!tokenizer) {
+    return res.status(503).json({ error: 'Tokenizer loading...' });
+  }
+
+  const { text } = req.body;
+  if (!text) {
+    return res.status(400).json({ error: 'Missing text' });
+  }
+
+  const tokens = tokenizer.tokenize(text);
+  const furigana = tokens.map((token) => {
+    const surface = token.surface_form;
+    const reading = token.reading;
+
+    if (reading && reading !== '*' && hasKanji(surface)) {
+      return { text: surface, reading: katakanaToHiragana(reading), hasKanji: true };
+    }
+    return { text: surface, reading: null, hasKanji: false };
+  });
+
+  res.json({ furigana });
+});
+
+app.post('/api/translate', async (req, res) => {
+  const apiKey = process.env.DEEPL_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'DEEPL_API_KEY not configured' });
+  }
+
+  const { text, target_lang, source_lang } = req.body;
+
+  try {
+    const response = await fetch('https://api-free.deepl.com/v2/translate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `DeepL-Auth-Key ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: Array.isArray(text) ? text : [text],
+        target_lang: target_lang || 'JA',
+        source_lang: source_lang || 'EN',
+      }),
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (err) {
+    console.error('DeepL proxy error:', err);
+    res.status(500).json({ error: 'Translation failed' });
+  }
+});
+
+app.get('/api/jisho', async (req, res) => {
+  const keyword = req.query.keyword;
+  if (!keyword) return res.status(400).json({ error: 'Missing keyword' });
+  try {
+    const response = await fetch(
+      `https://jisho.org/api/v1/search/words?keyword=${encodeURIComponent(keyword)}`
+    );
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error('Jisho proxy error:', err);
+    res.status(500).json({ error: 'Jisho lookup failed' });
+  }
+});
+
+app.listen(3001, () => {
+  console.log('Dev server on http://localhost:3001');
+});
