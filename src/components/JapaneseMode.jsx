@@ -25,15 +25,18 @@ export default function JapaneseMode({ onBack }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const recognitionRef = useRef(null);
+  const transcriptRef = useRef('');
 
   const startListening = useCallback(() => {
     setTranscript('');
+    transcriptRef.current = '';
     setResult(null);
 
     const recognition = createRecognition({
       lang: 'en-US',
       onResult: (text) => {
         setTranscript(text);
+        transcriptRef.current = text;
       },
       onError: (error) => {
         console.error('Speech error:', error);
@@ -61,7 +64,7 @@ export default function JapaneseMode({ onBack }) {
     }
     setListening(false);
 
-    const text = transcript.trim();
+    const text = transcriptRef.current.trim();
     if (!text) return;
 
     setLoading(true);

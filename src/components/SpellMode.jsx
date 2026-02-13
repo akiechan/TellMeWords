@@ -8,15 +8,18 @@ export default function SpellMode({ onBack }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const recognitionRef = useRef(null);
+  const transcriptRef = useRef('');
 
   const startListening = useCallback(() => {
     setTranscript('');
+    transcriptRef.current = '';
     setResults([]);
 
     const recognition = createRecognition({
       lang: 'en-US',
       onResult: (text) => {
         setTranscript(text);
+        transcriptRef.current = text;
       },
       onError: (error) => {
         console.error('Speech error:', error);
@@ -44,7 +47,7 @@ export default function SpellMode({ onBack }) {
     }
     setListening(false);
 
-    const text = transcript.trim();
+    const text = transcriptRef.current.trim();
     if (!text) return;
 
     const words = [...new Set(
