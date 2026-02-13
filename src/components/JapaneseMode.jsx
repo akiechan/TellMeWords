@@ -69,46 +69,54 @@ export default function JapaneseMode({ onBack }) {
 
     setLoading(true);
 
-    const wordCount = text.split(/\s+/).length;
+    try {
+      const wordCount = text.split(/\s+/).length;
 
-    if (wordCount <= 2) {
-      // Try Jisho first for short queries
-      const jishoResult = await lookupJisho(text);
-      if (jishoResult) {
-        // Get furigana for the word
-        const tokens = jishoResult.word
-          ? await getFurigana(jishoResult.word)
-          : [];
+      if (wordCount <= 2) {
+        // Try Jisho first for short queries
+        try {
+          const jishoResult = await lookupJisho(text);
+          if (jishoResult) {
+            const tokens = jishoResult.word
+              ? await getFurigana(jishoResult.word)
+              : [];
+            setResult({
+              type: 'jisho',
+              english: text,
+              japanese: jishoResult.word,
+              reading: jishoResult.reading,
+              senses: jishoResult.senses,
+              furigana: tokens,
+            });
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error('Jisho lookup failed, falling back to DeepL:', e);
+        }
+        // Fall through to DeepL if Jisho has no results or failed
+      }
+
+      // Use DeepL for sentences or Jisho fallback
+      const translated = await translateToJapanese(text);
+      if (translated) {
+        const tokens = await getFurigana(translated);
         setResult({
-          type: 'jisho',
+          type: 'deepl',
           english: text,
-          japanese: jishoResult.word,
-          reading: jishoResult.reading,
-          senses: jishoResult.senses,
+          japanese: translated,
           furigana: tokens,
         });
-        setLoading(false);
-        return;
+      } else {
+        setResult({ type: 'error', english: text });
       }
-      // Fall through to DeepL if Jisho has no results
-    }
-
-    // Use DeepL for sentences or Jisho fallback
-    const translated = await translateToJapanese(text);
-    if (translated) {
-      const tokens = await getFurigana(translated);
-      setResult({
-        type: 'deepl',
-        english: text,
-        japanese: translated,
-        furigana: tokens,
-      });
-    } else {
+    } catch (e) {
+      console.error('Translation error:', e);
       setResult({ type: 'error', english: text });
     }
 
     setLoading(false);
-  }, [transcript]);
+  }, []);
 
   const speakJapanese = () => {
     if (result?.japanese) {

@@ -61,7 +61,7 @@ export default function SpellMode({ onBack }) {
       .filter(Boolean);
     setResults(defs);
     setLoading(false);
-  }, [transcript]);
+  }, []);
 
   return (
     <div className="mode-page spell-page">
